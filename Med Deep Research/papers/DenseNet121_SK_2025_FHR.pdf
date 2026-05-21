@@ -1,0 +1,8 @@
+{
+  "statusCode": 404,
+  "statusMessage": "Not found",
+  "stack": [],
+  "data": {
+    "errorMessage": "Article with doi 10.3389/fmed.2024.1378942 not found"
+  }
+}

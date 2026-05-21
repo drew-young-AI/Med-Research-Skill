@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en-US" xml:lang="en-US">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>
+		Login
+					</title>
+
+	
+<meta name="generator" content="Open Journal Systems 3.3.0.17">
+	<link rel="stylesheet" href="https://healthinformaticsjournal.com/index.php/index/$$$call$$$/page/page/css?name=stylesheet" type="text/css" /><link rel="stylesheet" href="https://healthinformaticsjournal.com/index.php/index/$$$call$$$/page/page/css?name=font" type="text/css" /><link rel="stylesheet" href="https://healthinformaticsjournal.com/lib/pkp/styles/fontawesome/fontawesome.css?v=3.3.0.17" type="text/css" />
+</head>
+<body class="pkp_page_login pkp_op_index" dir="ltr">
+
+	<div class="pkp_structure_page">
+
+				<header class="pkp_structure_head" id="headerNavigationContainer" role="banner">
+						
+ <nav class="cmp_skip_to_content" aria-label="Jump to content links">
+	<a href="#pkp_content_main">Skip to main content</a>
+	<a href="#siteNav">Skip to main navigation menu</a>
+		<a href="#pkp_content_footer">Skip to site footer</a>
+</nav>
+
+			<div class="pkp_head_wrapper">
+
+				<div class="pkp_site_name_wrapper">
+					<button class="pkp_site_nav_toggle">
+						<span>Open Menu</span>
+					</button>
+										<div class="pkp_site_name">
+																<a href="						https://healthinformaticsjournal.com/index.php/index/index
+					" class="is_img">
+							<img src="https://healthinformaticsjournal.com/templates/images/structure/logo.png" alt="Open Journal Systems" title="Open Journal Systems" width="180" height="90" />
+						</a>
+										</div>
+				</div>
+
+				
+				<nav class="pkp_site_nav_menu" aria-label="Site Navigation">
+					<a id="siteNav"></a>
+					<div class="pkp_navigation_primary_row">
+						<div class="pkp_navigation_primary_wrapper">
+																			
+				
+
+																				</div>
+					</div>
+					<div class="pkp_navigation_user_wrapper" id="navigationUserWrapper">
+							<ul id="navigationUser" class="pkp_navigation_user pkp_nav_list">
+								<li class="profile">
+				<a href="https://healthinformaticsjournal.com/index.php/index/user/register">
+					Register
+				</a>
+							</li>
+								<li class="profile">
+				<a href="https://healthinformaticsjournal.com/index.php/index/login">
+					Login
+				</a>
+							</li>
+										</ul>
+
+					</div>
+				</nav>
+			</div><!-- .pkp_head_wrapper -->
+		</header><!-- .pkp_structure_head -->
+
+						<div class="pkp_structure_content">
+			<div class="pkp_structure_main" role="main">
+				<a id="pkp_content_main"></a>
+
+<div class="page page_login">
+	<nav class="cmp_breadcrumbs" role="navigation" aria-label="You are here:">
+	<ol>
+		<li>
+			<a href="https://healthinformaticsjournal.com/index.php/index/index">
+				Home
+			</a>
+			<span class="separator">/</span>
+		</li>
+		<li class="current">
+			<span aria-current="page">
+									Login
+							</span>
+		</li>
+	</ol>
+</nav>
+
+	<h1>
+		Login
+	</h1>
+
+	<p>
+		Required fields are marked with an asterisk: <abbr class="required" title="required">*</abbr>
+	</p>
+		
+	<form class="cmp_form cmp_form login" id="login" method="post" action="https://healthinformaticsjournal.com/index.php/index/login/signIn">
+		<input type="hidden" name="csrfToken" value="b225f8526c41c16c6f98a440584a99fd">
+
+		
+		<input type="hidden" name="source" value="/index.php/fhi/article/download/1284/1115" />
+
+		<fieldset class="fields">
+			<legend class="pkp_screen_reader">Login</legend>
+			<div class="username">
+				<label>
+					<span class="label">
+						Username
+						<span class="required" aria-hidden="true">*</span>
+						<span class="pkp_screen_reader">
+							Required
+						</span>
+					</span>
+					<input type="text" name="username" id="username" value="" maxlength="32" required aria-required="true">
+				</label>
+			</div>
+			<div class="password">
+				<label>
+					<span class="label">
+						Password
+						<span class="required" aria-hidden="true">*</span>
+						<span class="pkp_screen_reader">
+							Required
+						</span>
+					</span>
+					<input type="password" name="password" id="password" value="" password="true" maxlength="32" required aria-required="true">
+					<a href="https://healthinformaticsjournal.com/index.php/index/login/lostPassword">
+						Forgot your password?
+					</a>
+				</label>
+			</div>
+			<div class="remember checkbox">
+				<label>
+					<input type="checkbox" name="remember" id="remember" value="1" checked="$remember">
+					<span class="label">
+						Keep me logged in
+					</span>
+				</label>
+			</div>
+			<div class="buttons">
+				<button class="submit" type="submit">
+					Login
+				</button>
+
+														<a href="https://healthinformaticsjournal.com/index.php/index/user/register?source=%2Findex.php%2Ffhi%2Farticle%2Fdownload%2F1284%2F1115" class="register">
+						Register
+					</a>
+							</div>
+		</fieldset>
+	</form>
+</div><!-- .page -->
+
+	</div><!-- pkp_structure_main -->
+
+							</div><!-- pkp_structure_content -->
+
+<div class="pkp_structure_footer_wrapper" role="contentinfo">
+	<a id="pkp_content_footer"></a>
+
+	<div class="pkp_structure_footer">
+
+		
+		<div class="pkp_brand_footer" role="complementary">
+			<a href="https://healthinformaticsjournal.com/index.php/index/about/aboutThisPublishingSystem">
+				<img alt="More information about the publishing system, Platform and Workflow by OJS/PKP." src="https://healthinformaticsjournal.com/templates/images/ojs_brand.png">
+			</a>
+		</div>
+	</div>
+</div><!-- pkp_structure_footer_wrapper -->
+
+</div><!-- pkp_structure_page -->
+
+<script src="https://healthinformaticsjournal.com/lib/pkp/lib/vendor/components/jquery/jquery.min.js?v=3.3.0.17" type="text/javascript"></script><script src="https://healthinformaticsjournal.com/lib/pkp/lib/vendor/components/jqueryui/jquery-ui.min.js?v=3.3.0.17" type="text/javascript"></script><script src="https://healthinformaticsjournal.com/plugins/themes/default/js/lib/popper/popper.js?v=3.3.0.17" type="text/javascript"></script><script src="https://healthinformaticsjournal.com/plugins/themes/default/js/lib/bootstrap/util.js?v=3.3.0.17" type="text/javascript"></script><script src="https://healthinformaticsjournal.com/plugins/themes/default/js/lib/bootstrap/dropdown.js?v=3.3.0.17" type="text/javascript"></script><script src="https://healthinformaticsjournal.com/plugins/themes/default/js/main.js?v=3.3.0.17" type="text/javascript"></script>
+
+
+</body>
+<script>'undefined'=== typeof _trfq || (window._trfq = []);'undefined'=== typeof _trfd && (window._trfd=[]),_trfd.push({'tccl.baseHost':'secureserver.net'},{'ap':'cpbh-mt'},{'server':'p3plmcpnl492719'},{'dcenter':'p3'},{'cp_id':'10178395'},{'cp_cl':'8'}) // Monitoring performance to make your website faster. If you want to opt-out, please contact web hosting support.</script><script src='https://img1.wsimg.com/traffic-assets/js/tccl.min.js'></script></html>

@@ -1,0 +1,11 @@
+# Detailed Summary: CTGFusionNet (2025)
+
+## Methodology
+- **Multi-modal Fusion**: Combines FHR and UC signals using a dual-branch deep learning framework.
+- **Architecture**: Bi-CNN for local morphology + LSTM/Transformer for long-term temporal dependencies.
+- **Attention Mechanism**: Dynamically weights FHR vs. UC features to identify critical signs of fetal distress.
+- **Preprocessing**: Denoising, interpolation, and standardization of clinical CTG signals.
+
+## Results
+- **Performance**: Significant improvement in 3-class classification (Normal, Suspicious, Pathological) over baseline ML models (SVM, Random Forest).
+- **Impact**: Reduced false-positive rates in clinical decision-making for emergency C-sections.

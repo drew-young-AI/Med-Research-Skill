@@ -1,0 +1,13 @@
+# Detailed Summary: PatchCTG (2025)
+
+## Methodology
+- **Instance Normalization**: Standardizes FHR and TOCO channels independently to handle patient distribution shift.
+- **Patching Mechanism**: Segments long sequences into fixed-length patches to capture local and global trends efficiently.
+- **Channel-Independent Processing**: Separate Transformer encoders for FHR and TOCO signals.
+- **Backbone**: Multi-Head Self-Attention (MHSA) and Positional Encoding.
+
+## Results (OXMAT Dataset - 20,589 CTGs)
+- **AUC**: 0.77 (Outperforming Dawes-Redman 0.67 and CNN-LSTM 0.73).
+- **Specificity**: 88%.
+- **Sensitivity**: 57% (52% within 7 days of delivery).
+- **Hyperparameters**: 6 layers, 4 heads, Dimension 512, Patch size 16.

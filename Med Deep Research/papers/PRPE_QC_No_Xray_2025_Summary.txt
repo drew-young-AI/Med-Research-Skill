@@ -1,0 +1,10 @@
+# Detailed Summary: PRPE_QC_No_Xray (2025)
+
+## Methodology
+- **Concept**: Predictive QC without radiation exposure, using physical/usage metadata.
+- **Features**: Equipment age, usage frequency, folding/storage habits, visible exterior wear, and weight changes (detecting lead shift).
+- **Algorithms**: Gradient Boosting (XGBoost) and Random Forest classifiers.
+
+## Results
+- **Performance**: High sensitivity in identifying high-risk equipment before formal X-ray inspection.
+- **Clinical Value**: Acts as a pre-screening tool to reduce labor and radiation costs in hospital PPE management.
