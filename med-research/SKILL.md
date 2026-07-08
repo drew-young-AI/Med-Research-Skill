@@ -1,9 +1,9 @@
 ---
 name: med-research
-description: High-fidelity medical research and AI consensus engine. v9.5 implements publisher-aware fallback and a 7-tier download ladder.
+description: High-fidelity medical research and AI consensus engine. v10.2 implements publisher-aware fallback, 5-tier download ladder, PDF integrity validation, and Markdown table safety rules.
 ---
 
-# Medical Research Skill v10.0 (JCR Rigor & 1:1 Evidence Mastery)
+# Medical Research Skill v10.2 (JCR Rigor & 1:1 Evidence Mastery)
 
 ## 1. 核心研究能力 (Core Capabilities)
 1.  **JCR/IF 強制驗證**: 所有選入矩陣的文獻必須具備 JCR 分區 (Q1/Q2) 與實體 Impact Factor (IF)。嚴禁使用無 IF 的 ESCI 或 Pre-print 文獻，除非使用者明確要求。
@@ -25,6 +25,59 @@ description: High-fidelity medical research and AI consensus engine. v9.5 implem
 9.  **瓶頸/開發難度**: 實作中可能遇到的技術坑位。
 10. **專案對標 / 研究利基**: 目標臨床落地方案與未來發表點。
 
-## 3. 出版商感知與下載梯隊 (Download Ladder)
-(保持原有的 7 層下載階梯，但加入 JCR 權重篩選)...
+## 3. 出版商感知與下載梯隊 (Download Ladder v10.2)
+當執行文獻獲取時，必須遵循以下「五層下載階梯」：
 
+1.  **Tier 1: Unpaywall API** - 優先以 DOI 查詢合法的 Open Access PDF URL。
+2.  **Tier 2: EuropePMC** - 以 DOI 反查 PMCID，再以 `https://europepmc.org/articles/{PMCID}?pdf=render` 下載。
+3.  **Tier 3: Semantic Scholar** - 以 DOI 查詢 `openAccessPdf` 欄位，取得 OA PDF URL。
+4.  **Tier 4: arXiv Preprint** - 以論文標題進行模糊搜尋，若標題詞彙重疊 ≥30% 即接受，下載 PDF。
+5.  **Tier 5: CrossRef / medRxiv / bioRxiv** - 以標題查詢 posted-content，尋找 Preprint PDF 連結。
+
+### 下載後強制驗證 (PDF Integrity Check):
+- **每次下載後**，必須讀取檔案前 5 bytes，確認為 `%PDF-` magic bytes。
+- 若驗證失敗（即下載到 HTML 偽裝檔案），**強制刪除**該檔案並進入下一 Tier。
+- **最小有效大小**: 5,000 bytes。小於此值視為無效。
+
+### HTML 偽裝防禦 (Fake PDF Defense):
+若所有 Tier 均失敗，但曾成功取得 HTML 全文（如 Ovid SPA 頁面），可使用 Python `reportlab` + `html.parser` 進行本地端文本萃取，重新封裝為合法 PDF。執行後同樣需通過 magic bytes 驗證。
+
+## 4. 報告 Markdown 格式強制規範 (Markdown Safety Rules v10.2)
+
+### 4.1 欄內多連結的分隔符規則 (CRITICAL)
+- 在同一個 Markdown 表格欄位內，若需並列多個連結（如 PDF + Web），**強制使用 `\|` (反斜線加管道符)** 作為欄內分隔符。
+- **嚴禁使用未跳脫的 `|`**，否則 Markdown 解析器會將其誤認為新欄位分隔符，導致整行表格結構右移崩潰。
+
+```
+✅ 正確: [PDF](../papers/foo.pdf) \| [Web](https://doi.org/...)
+❌ 錯誤: [PDF](../papers/foo.pdf) | [Web](https://doi.org/...)
+```
+
+### 4.2 URL 空白字元跳脫規則 (CRITICAL)
+- 在 `[文字](URL)` 的 URL 部分，若檔名或路徑含有空白字元，**強制替換為 `%20`**。
+- 原始空白會導致 Markdown 解析器截斷連結，造成連結破圖與表格渲染錯誤。
+
+```
+✅ 正確: [PDF](../papers/Deep%20Learning%20Model.pdf)
+❌ 錯誤: [PDF](../papers/Deep Learning Model.pdf)
+```
+
+### 4.3 欄位內禁止使用行內括號備註
+- 不在表格欄位內使用 `*(備註文字)*` 格式添加補充說明。
+- 含有分號 `;`、冒號 `:` 或括號的備註文字，容易在部分渲染器中觸發格式錯誤。
+- **正確做法**：備註資訊應寫入報告的「深度技術剖析」章節，而非嵌入表格欄位。
+
+### 4.4 檔名句號結尾防護
+- 當論文標題末尾有句號（如 `...exposure.`），以標題為檔名時，**必須去除末尾句號**，再接上副檔名 `.pdf`。
+- 防止 `title..pdf`（雙句號）導致的副檔名辨識問題。
+
+```python
+# 正確的檔名清理邏輯
+safe_title = title.rstrip('.').replace(':', '').replace('/', '-')
+filename = safe_title[:120] + '.pdf'
+```
+
+## 5. Preprint 標注規則
+- 若最終使用的是 Preprint 版本，必須在第 10 欄位的連結後標記來源，格式為：
+  `[PDF (PREPRINT)](../papers/xxx.pdf) \| [Web (arXiv)](https://arxiv.org/...)`
+- 同時在「數據規模/工程細節」欄位末尾標注 `[Source: Preprint/arXiv]`。
