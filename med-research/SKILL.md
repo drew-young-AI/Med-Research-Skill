@@ -40,6 +40,13 @@ description: High-fidelity medical research and AI consensus engine. v10.2 imple
 - **直接下載原則**：若發現 ResearchGate 網址，僅限於頁面上存在公開下載連結 (/fulltext/downloads) 時，嘗試透過修改 User-Agent 或 Cookies 等方式直接獲取 PDF。
 - **嚴格禁止請求**：**絕對禁止**觸發「Request Full-text from Author」的動作或 API。我們只獲取已對外公開的副本，絕不向作者發送索取通知。
 
+
+### 3.2 內容感知驗證 (Anti-Honeypot Validation)
+- 由於部分出版商（如 Springer）會回傳含有 %PDF- 標頭的「誘餌 PDF」（例如完全無關的論文或 Paywall 登入提示頁面），**僅檢查 Magic Bytes 已經不夠**。
+- 所有下載的 PDF 必須經過 alidate_pdfs.py 檢查，萃取前兩頁文字，驗證：
+  1. 不得包含 purchase, subscribe, ccess to this article, log in 等 Paywall 關鍵字。
+  2. PDF 內文必須包含至少 30% 的目標論文標題關鍵字（字長 > 3）。
+
 ### 下載後強制驗證 (PDF Integrity Check):
 - **每次下載後**，必須讀取檔案前 5 bytes，確認為 `%PDF-` magic bytes。
 - 若驗證失敗（即下載到 HTML 偽裝檔案），**強制刪除**該檔案並進入下一 Tier。
