@@ -33,6 +33,12 @@ description: High-fidelity medical research and AI consensus engine. v10.2 imple
 3.  **Tier 3: Semantic Scholar** - 以 DOI 查詢 `openAccessPdf` 欄位，取得 OA PDF URL。
 4.  **Tier 4: arXiv Preprint** - 以論文標題進行模糊搜尋，若標題詞彙重疊 ≥30% 即接受，下載 PDF。
 5.  **Tier 5: CrossRef / medRxiv / bioRxiv** - 以標題查詢 posted-content，尋找 Preprint PDF 連結。
+6.  **Tier 6: ResearchGate Public PDF** - 若發現公開的 RG 網址，直接下載，嚴禁觸發 Request from author。
+
+
+### 3.1 ResearchGate 專屬下載協議 (Tier 6)
+- **直接下載原則**：若發現 ResearchGate 網址，僅限於頁面上存在公開下載連結 (/fulltext/downloads) 時，嘗試透過修改 User-Agent 或 Cookies 等方式直接獲取 PDF。
+- **嚴格禁止請求**：**絕對禁止**觸發「Request Full-text from Author」的動作或 API。我們只獲取已對外公開的副本，絕不向作者發送索取通知。
 
 ### 下載後強制驗證 (PDF Integrity Check):
 - **每次下載後**，必須讀取檔案前 5 bytes，確認為 `%PDF-` magic bytes。

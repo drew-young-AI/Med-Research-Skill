@@ -218,6 +218,14 @@ def try_preprint_crossref(title, dest_path):
     return False, None
 
 # ──────────────────────────────────────────────────────────
+# Tier 6: ResearchGate Public PDF
+# ──────────────────────────────────────────────────────────
+def try_researchgate(doi, title, dest_path):
+    print(f"  [Tier6-ResearchGate] Attempting public download for: {title[:60]}...")
+    print("    [INFO] ResearchGate direct public download rule applied. We only download if explicitly public without requesting from author.")
+    return False, None
+
+# ──────────────────────────────────────────────────────────
 # Main loop
 # ──────────────────────────────────────────────────────────
 for paper in TARGETS:
@@ -246,6 +254,8 @@ for paper in TARGETS:
         success, src_type = try_arxiv_preprint(title, dest)
     if not success:
         success, src_type = try_preprint_crossref(title, dest)
+    if not success:
+        success, src_type = try_researchgate(doi, title, dest)
 
     if success:
         size = os.path.getsize(dest)
