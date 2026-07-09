@@ -641,26 +641,36 @@ def main():
                 print(f"  [INVALID] Bad magic bytes -> DELETING")
                 safe_remove(dest)
 
-        # Phase 2: 15-Tier Download
+        # Phase 2: 15-Tier Download  (ordered: easiest → hardest)
+        # ── Tier  1- 4: Pure REST APIs (zero scraping, highest success rate)
+        # ── Tier  5- 6: Preprint / DOI-resolved direct links
+        # ── Tier  7- 9: Publisher-specific open-access portals
+        # ── Tier 10-12: HTML scraping (Cloudflare / landing pages)
+        # ── Tier 13-15: Search-engine discovery (CAPTCHA / multi-hop)
         print(f"  [DOWNLOAD] Starting 15-tier ladder...")
         downloaded = False
 
         tiers = [
-            ("T1", lambda: tier1_unpaywall(doi, dest, title)),
-            ("T2", lambda: tier2_europepmc(pmcid, dest, title)),
-            ("T3", lambda: tier3_semanticscholar(doi, dest, title)),
-            ("T4", lambda: tier4_crossref(doi, dest, title)),
-            ("T5", lambda: tier5_direct_publisher(doi, dest, title)),
-            ("T6", lambda: tier6_ssrn(ssrn, dest, title)),
-            ("T7", lambda: tier7_ncbi_pmid(pmid, dest, title)),
-            ("T8", lambda: tier8_openalex(doi, dest, title)),
-            ("T9", lambda: tier9_core(doi, dest, title)),
-            ("T10", lambda: tier10_researchgate_public(rg_id, dest, title)),
-            ("T11", lambda: tier11_medknow_oa(doi, dest, title, row_info)),
-            ("T12", lambda: tier12_doi_landing_scrape(doi, dest, title)),
-            ("T13", lambda: tier13_duckduckgo_search(title, dest)),
-            ("T14", lambda: tier14_google_scholar(title, dest)),
-            ("T15", lambda: tier15_proquest(title, dest)),
+            # ── 難度 ★☆☆☆☆ ── Pure REST APIs ──────────────────────────────
+            ("T1",  lambda: tier1_unpaywall(doi, dest, title)),          # Unpaywall JSON API
+            ("T2",  lambda: tier8_openalex(doi, dest, title)),           # OpenAlex JSON API
+            ("T3",  lambda: tier9_core(doi, dest, title)),               # CORE.ac.uk REST API
+            ("T4",  lambda: tier2_europepmc(pmcid, dest, title)),        # EuropePMC REST API
+            # ── 難度 ★★☆☆☆ ── Preprint / Semantic APIs ───────────────────
+            ("T5",  lambda: tier3_semanticscholar(doi, dest, title)),    # S2 Graph API
+            ("T6",  lambda: tier4_crossref(doi, dest, title)),           # CrossRef links API
+            ("T7",  lambda: tier6_ssrn(ssrn, dest, title)),              # SSRN preprint direct
+            # ── 難度 ★★★☆☆ ── Publisher OA / NCBI (with POW solver) ──────
+            ("T8",  lambda: tier7_ncbi_pmid(pmid, dest, title)),         # NCBI PMC + POW solver
+            ("T9",  lambda: tier11_medknow_oa(doi, dest, title, row_info)),  # Medknow OA portal
+            ("T10", lambda: tier5_direct_publisher(doi, dest, title)),   # DOI-resolved publisher
+            # ── 難度 ★★★★☆ ── HTML / Cloudflare Scraping ─────────────────
+            ("T11", lambda: tier10_researchgate_public(rg_id, dest, title)),  # RG public PDF scrape
+            ("T12", lambda: tier12_doi_landing_scrape(doi, dest, title)),     # DOI landing HTML mine
+            # ── 難度 ★★★★★ ── Search-Engine Discovery (CAPTCHA / multi-hop)
+            ("T13", lambda: tier13_duckduckgo_search(title, dest)),      # DuckDuckGo title search
+            ("T14", lambda: tier15_proquest(title, dest)),               # ProQuest openview DDG
+            ("T15", lambda: tier14_google_scholar(title, dest)),         # Google Scholar (CAPTCHA risk)
         ]
 
         for tier_name, tier_fn in tiers:
