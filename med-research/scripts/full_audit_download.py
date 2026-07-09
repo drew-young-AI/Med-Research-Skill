@@ -528,11 +528,78 @@ def tier13_duckduckgo_search(title, dest):
         print(f"  [T13-DDG-Search] ERR: {e}")
     return False
 
+def tier14_google_scholar(title, dest):
+    """
+    Tier 14: Search Google Scholar HTML for public PDF and ResearchGate links.
+    """
+    print(f"  [T14-Scholar] Searching Google Scholar...")
+    url = "https://scholar.google.com/scholar?q=" + urllib.parse.quote(title)
+    try:
+        req = urllib.request.Request(url, headers=HEADERS)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            html = resp.read().decode('utf-8', errors='ignore')
+        
+        if "captcha" in html.lower() or "not a robot" in html.lower() or "/recaptcha/" in html:
+            print("    [T14-Scholar] Blocked by CAPTCHA.")
+            return False
+            
+        links = re.findall(r'href=["\'](https?://[^"\']+\.pdf[^"\']*)["\']', html)
+        rg_links = re.findall(r'href=["\'](https?://www\.researchgate\.net/publication/[^"\']+)["\']', html)
+        
+        candidates = list(set(links + rg_links))
+        print(f"    [T14-Scholar] Discovered {len(candidates)} candidates.")
+        for u in candidates[:5]:
+            if "researchgate.net" in u:
+                rg_id_match = re.search(r'publication/(\d+)', u)
+                if rg_id_match:
+                    if tier10_researchgate_public(rg_id_match.group(1), dest, title):
+                        return True
+            else:
+                if try_download_and_validate(u, dest, title, "T14-Scholar"):
+                    return True
+            time.sleep(0.5)
+    except Exception as e:
+        print(f"    [T14-Scholar] ERR: {e}")
+    return False
+
+def tier15_proquest(title, dest):
+    """
+    Tier 15: Search ProQuest open-access documents via DuckDuckGo site query.
+    Converts docview URLs to direct open-access guest viewer URLs.
+    """
+    print(f"  [T15-ProQuest] Searching ProQuest via DDG...")
+    query = f'site:proquest.com "{title}"'
+    url = "https://html.duckduckgo.com/html/?q=" + urllib.parse.quote(query)
+    try:
+        req = urllib.request.Request(url, headers=HEADERS)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            html = resp.read().decode('utf-8', errors='ignore')
+        encoded_links = re.findall(r'uddg=([^&"\'<>]+)', html)
+        
+        pq_ids = []
+        for el in encoded_links:
+            dec = urllib.parse.unquote(el)
+            if "proquest.com" in dec:
+                m = re.search(r'(docview|openview)/(\d+)', dec)
+                if m:
+                    pq_ids.append(m.group(2))
+                    
+        pq_ids = list(set(pq_ids))
+        print(f"    [T15-ProQuest] Discovered {len(pq_ids)} doc IDs.")
+        for doc_id in pq_ids[:3]:
+            openview_url = f"https://www.proquest.com/openview/{doc_id}/1?pq-origsite=gscholar&cbl=18750"
+            if try_download_and_validate(openview_url, dest, title, "T15-ProQuest"):
+                return True
+            time.sleep(0.5)
+    except Exception as e:
+        print(f"    [T15-ProQuest] ERR: {e}")
+    return False
+
 # ─── Main Audit Loop ─────────────────────────────────────────────────────
 
 def main():
     print("=" * 70)
-    print("  FULL AUDIT & DOWNLOAD v4.0  (13-Tier Ladder + CloudPMC POW Solver)")
+    print("  FULL AUDIT & DOWNLOAD v5.0  (15-Tier Ladder + CloudPMC POW Solver)")
     print("=" * 70)
 
     audit_results = {}
@@ -574,8 +641,8 @@ def main():
                 print(f"  [INVALID] Bad magic bytes -> DELETING")
                 safe_remove(dest)
 
-        # Phase 2: 13-Tier Download
-        print(f"  [DOWNLOAD] Starting 13-tier ladder...")
+        # Phase 2: 15-Tier Download
+        print(f"  [DOWNLOAD] Starting 15-tier ladder...")
         downloaded = False
 
         tiers = [
@@ -592,6 +659,8 @@ def main():
             ("T11", lambda: tier11_medknow_oa(doi, dest, title, row_info)),
             ("T12", lambda: tier12_doi_landing_scrape(doi, dest, title)),
             ("T13", lambda: tier13_duckduckgo_search(title, dest)),
+            ("T14", lambda: tier14_google_scholar(title, dest)),
+            ("T15", lambda: tier15_proquest(title, dest)),
         ]
 
         for tier_name, tier_fn in tiers:
@@ -605,12 +674,12 @@ def main():
             time.sleep(0.2)
 
         if not downloaded:
-            print(f"  [FAILED] All 13 tiers exhausted")
+            print(f"  [FAILED] All 15 tiers exhausted")
             audit_results[row] = {"status": "FAILED"}
 
     # Summary
     print(f"\n{'=' * 70}")
-    print("  AUDIT SUMMARY v4.0")
+    print("  AUDIT SUMMARY v5.0")
     print(f"{'=' * 70}")
     icons = {"VALID": "OK", "DOWNLOADED": "NEW", "FAILED": "XX", "N/A": "--"}
     for row, res in sorted(audit_results.items()):
@@ -620,7 +689,7 @@ def main():
         safe_f = fname.encode("ascii", errors="replace").decode("ascii")
         print(f"  [{icon}] Row {row}: {res['status']:10s} {tier:4s} | {safe_f}")
 
-    with open(os.path.join(PAPERS_DIR, "audit_v4_results.json"), "w", encoding="utf-8") as f:
+    with open(os.path.join(PAPERS_DIR, "audit_v5_results.json"), "w", encoding="utf-8") as f:
         json.dump(audit_results, f, ensure_ascii=False, indent=2)
     print(f"\nDone.")
 
