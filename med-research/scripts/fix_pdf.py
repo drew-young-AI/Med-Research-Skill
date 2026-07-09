@@ -14,7 +14,8 @@ class HTMLTextExtractor(html.parser.HTMLParser):
     def get_text(self):
         return ''.join(self.result)
 
-file_path = r'D:\project\Med Deep Research\papers\Prediction Model for Defects in Lead and Lead-Free Aprons.pdf'
+import sys
+file_path = sys.argv[1] if len(sys.argv) > 1 else exit(1)
 # Read the HTML content (which was wrongly saved as .pdf)
 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
     content = f.read()
