@@ -22,7 +22,7 @@ def check_title(filepath, title):
         if not significant_words: return True, 'NO SIG WORDS'
         match_count = sum(1 for w in significant_words if w in text_lower)
         ratio = match_count / len(significant_words)
-        return ratio >= 0.3, f'Match ratio: {ratio:.2f}'
+        return ratio >= 0.5, f'Match ratio: {ratio:.2f}'
     except Exception as e:
         return False, f'Error: {e}'
 
