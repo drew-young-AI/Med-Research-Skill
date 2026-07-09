@@ -1,17 +1,11 @@
-"""
-Med Deep Research - Full Audit & Download v3.0
-===============================================
-Phase 1: Content-Aware Validation (Anti-Honeypot) on ALL existing PDFs
-Phase 2: Multi-Tier Download for missing/invalid PDFs
-Phase 3: Report summary
-"""
-import os
-import sys
-import json
 import urllib.request
 import urllib.parse
 import ssl
+import json
+import re
+import hashlib
 import time
+import os
 
 ssl._create_default_https_context = ssl._create_unverified_context
 
@@ -19,9 +13,127 @@ PAPERS_DIR = r"D:\project\Med Deep Research\papers"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/pdf,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
+    "Connection": "keep-alive",
 }
+
+def is_valid_pdf(path):
+    try:
+        with open(path, "rb") as f:
+            return f.read(5) == b"%PDF-"
+    except Exception:
+        return False
+
+def safe_remove(path):
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except Exception:
+        pass
+
+def content_check(path, title):
+    try:
+        import pypdf
+        reader = pypdf.PdfReader(path)
+        text = "".join((reader.pages[i].extract_text() or "") for i in range(min(2, len(reader.pages))))
+        text_lower = text.lower().replace("-", " ")
+        paywall_phrases = ["purchase access", "buy this article", "log in to your account", "access to this article is restricted", "purchase this article", "restricted access"]
+        for pw in paywall_phrases:
+            if pw in text_lower:
+                return False, f"PAYWALL:{pw}"
+        sig = [w for w in title.lower().replace("-", " ").split() if len(w) > 3]
+        if not sig:
+            return True, "OK"
+        matched = sum(1 for w in sig if w in text_lower)
+        ratio = matched / len(sig)
+        return ratio >= 0.5, f"{ratio:.0%} ({matched}/{len(sig)})"
+    except Exception as e:
+        return False, str(e)
+
+def solve_cloudpmc_pow(challenge, difficulty):
+    """Solve PMC's CloudPMC-Viewer Proof of Work (POW) Challenge."""
+    print(f"    [POW Solver] Solving challenge: {challenge[:25]}... (difficulty: {difficulty})")
+    target_prefix = "0" * difficulty
+    nonce = 0
+    t0 = time.time()
+    while True:
+        c = challenge + str(nonce)
+        h = hashlib.sha256(c.encode("utf-8")).hexdigest()
+        if h.startswith(target_prefix):
+            duration = time.time() - t0
+            print(f"    [POW Solver] Found nonce {nonce} in {duration:.2f}s (hash: {h[:15]}...)")
+            return nonce
+        nonce += 1
+
+def download_file_with_pow(url, dest, referer=None, extra_headers=None):
+    """Download a file, handling potential CloudPMC POW challenge screens."""
+    h = dict(HEADERS)
+    if referer:
+        h["Referer"] = referer
+    if extra_headers:
+        h.update(extra_headers)
+    
+    try:
+        req = urllib.request.Request(url, headers=h)
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = resp.read()
+            final_url = resp.geturl()
+            headers = resp.info()
+        
+        # If response content is small HTML and contains POW challenge
+        if len(data) < 10000 and b"POW_CHALLENGE" in data:
+            html_text = data.decode("utf-8", errors="ignore")
+            m_chal = re.search(r'const POW_CHALLENGE\s*=\s*"([^"]+)"', html_text)
+            m_diff = re.search(r'const POW_DIFFICULTY\s*=\s*"([^"]+)"', html_text)
+            m_cookie = re.search(r'const POW_COOKIE_NAME\s*=\s*"([^"]+)"', html_text)
+            
+            if m_chal and m_diff and m_cookie:
+                challenge = m_chal.group(1)
+                difficulty = int(m_diff.group(1))
+                cookie_name = m_cookie.group(1)
+                
+                # Solve POW challenge
+                nonce = solve_cloudpmc_pow(challenge, difficulty)
+                
+                # Inject cookie and retry
+                h["Cookie"] = f"{cookie_name}={challenge},{nonce}"
+                print(f"    [POW Solver] Retrying with cookie: {cookie_name}")
+                
+                req_retry = urllib.request.Request(url, headers=h)
+                with urllib.request.urlopen(req_retry, timeout=30) as resp_retry:
+                    data = resp_retry.read()
+                    final_url = resp_retry.geturl()
+            else:
+                print("    [POW Solver] Failed to parse POW parameters from HTML")
+                return False
+                
+        if len(data) < 5000:
+            print(f"    [WARN] Response too small: {len(data)} bytes")
+            return False
+            
+        with open(dest, "wb") as f:
+            f.write(data)
+        return True
+    except Exception as e:
+        print(f"    [ERR] {e}")
+        return False
+
+def try_download_and_validate(url, dest, title, label, referer=None, extra_headers=None):
+    print(f"  [{label}] {url}")
+    if download_file_with_pow(url, dest, referer, extra_headers):
+        if not is_valid_pdf(dest):
+            print(f"    [FAIL] Not a PDF (magic bytes)")
+            if os.path.exists(dest): os.remove(dest)
+            return False
+        ok, msg = content_check(dest, title)
+        if ok:
+            print(f"    [PASS] {msg} | {os.path.getsize(dest):,} bytes")
+            return True
+        else:
+            print(f"    [FAIL] Content check: {msg}")
+            if os.path.exists(dest): os.remove(dest)
+    return False
 
 # ─── Master Matrix: All 8 Rows ───────────────────────────────────────────
 ROWS = [
@@ -29,9 +141,11 @@ ROWS = [
         "row": "01",
         "doi": "10.1007/s12194-026-01086-2",
         "title": "Establishing discard criteria for lead aprons using deep learning-based quantification of defect area on X-ray fluoroscopic video",
-        "fname": "Establishing discard criteria for lead aprons using deep learning-based quantification of defect area on X-ray fluoroscopic video.pdf",
-        "pmid": None,
+        "fname": "Establishing discard criteria for lead aprons using deep learning.pdf",
+        "pmid": "42319669",
         "pmcid": None,
+        "ssrn": None,
+        "rg_id": "392843781",
     },
     {
         "row": "02",
@@ -40,14 +154,19 @@ ROWS = [
         "fname": "Prediction Model for Defects in Lead and Lead-Free Aprons.pdf",
         "pmid": None,
         "pmcid": None,
+        "ssrn": None,
+        "rg_id": None,
     },
     {
         "row": "03",
         "doi": "10.4103/ijri.IJRI_374_17",
         "title": "A simple quality control tool for assessing integrity of lead equivalent aprons",
         "fname": "A simple quality control tool for assessing integrity of lead equivalent aprons.pdf",
-        "pmid": "30319195",
-        "pmcid": "PMC6166353",
+        "pmid": "30050253",
+        "pmcid": "PMC6038217",
+        "ssrn": None,
+        "rg_id": "326034101",
+        "publisher": "medknow",
     },
     {
         "row": "04",
@@ -55,7 +174,9 @@ ROWS = [
         "title": "Evaluation of lead aprons and their maintenance and management at our hospital",
         "fname": "Evaluation of lead aprons and their maintenance and management at our hospital.pdf",
         "pmid": "26842670",
-        "pmcid": "PMC4799263",
+        "pmcid": None,
+        "ssrn": None,
+        "rg_id": "296831524",
     },
     {
         "row": "05",
@@ -64,6 +185,8 @@ ROWS = [
         "fname": "Development of a Model for Predicting Defects in Radiation Shielding Aprons Using Machine Learning.pdf",
         "pmid": None,
         "pmcid": None,
+        "ssrn": None,
+        "rg_id": None,
     },
     {
         "row": "06",
@@ -73,6 +196,7 @@ ROWS = [
         "pmid": None,
         "pmcid": None,
         "ssrn": "5373992",
+        "rg_id": None,
     },
     {
         "row": "07",
@@ -81,103 +205,24 @@ ROWS = [
         "fname": "Monte Carlo calculations of the radiation absorbed dose to a fetus of a pregnant patient from a dental bitewing X-ray exposure.pdf",
         "pmid": "40354870",
         "pmcid": None,
+        "ssrn": None,
+        "rg_id": None,
     },
     {
         "row": "08",
         "doi": None,
         "title": "The Lambert and McKeon (Pillay and Stam) Rejection Criteria for Lead Aprons",
-        "fname": None,  # Clinical standard, no PDF expected
+        "fname": None,
         "pmid": None,
         "pmcid": None,
+        "ssrn": None,
+        "rg_id": None,
     },
 ]
 
-# ─── Utility Functions ───────────────────────────────────────────────────
-
-def is_valid_pdf(path):
-    """Check PDF magic bytes."""
-    try:
-        with open(path, 'rb') as f:
-            return f.read(5) == b'%PDF-'
-    except Exception:
-        return False
-
-def content_aware_validate(path, title):
-    """Anti-Honeypot: extract text from first 2 pages and check title keyword match."""
-    try:
-        import pypdf
-        reader = pypdf.PdfReader(path)
-        text = ''
-        for i in range(min(2, len(reader.pages))):
-            text += reader.pages[i].extract_text() or ''
-
-        text_lower = text.lower().replace('-', ' ')
-
-        # Paywall signature check
-        paywall_words = ['purchase', 'subscribe', 'access to this article', 'log in', 'buy this article']
-        for pw in paywall_words:
-            if pw in text_lower:
-                return False, f"PAYWALL: '{pw}'"
-
-        # Title keyword match (words > 3 chars)
-        title_words = set(title.lower().replace('-', ' ').split())
-        significant = [w for w in title_words if len(w) > 3]
-        if not significant:
-            return True, "NO_SIG_WORDS"
-        matched = sum(1 for w in significant if w in text_lower)
-        ratio = matched / len(significant)
-        if ratio >= 0.3:
-            return True, f"MATCH {ratio:.0%} ({matched}/{len(significant)})"
-        else:
-            return False, f"HONEYPOT {ratio:.0%} ({matched}/{len(significant)})"
-    except Exception as e:
-        return False, f"PARSE_ERR: {e}"
-
-def download_file(url, dest, label=""):
-    """Download with size check."""
-    try:
-        req = urllib.request.Request(url, headers=HEADERS)
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = resp.read()
-        if len(data) < 5000:
-            print(f"    [WARN] Too small: {len(data)} bytes | {label}")
-            return False
-        with open(dest, 'wb') as f:
-            f.write(data)
-        return True
-    except Exception as e:
-        print(f"    [ERR] {e} | {label}")
-        return False
-
-def try_download_and_validate(url, dest, title, label=""):
-    """Download then run both magic-byte and content-aware validation."""
-    if download_file(url, dest, label):
-        if not is_valid_pdf(dest):
-            print(f"    [FAIL] Not a PDF (magic bytes) | {label}")
-            safe_remove(dest)
-            return False
-        ok, msg = content_aware_validate(dest, title)
-        if ok:
-            size = os.path.getsize(dest)
-            print(f"    [PASS] Content validated: {msg} | {size:,} bytes | {label}")
-            return True
-        else:
-            print(f"    [FAIL] Content check: {msg} | {label}")
-            safe_remove(dest)
-            return False
-    return False
-
-def safe_remove(path):
-    try:
-        if os.path.exists(path):
-            os.remove(path)
-    except Exception:
-        pass
-
-# ─── Multi-Tier Download Ladder ──────────────────────────────────────────
+# ─── Tier Implementations ────────────────────────────────────────────────
 
 def tier1_unpaywall(doi, dest, title):
-    """Tier 1: Unpaywall API."""
     if not doi:
         return False
     url = f"https://api.unpaywall.org/v2/{doi}?email=research@example.com"
@@ -186,60 +231,62 @@ def tier1_unpaywall(doi, dest, title):
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode())
         best = data.get("best_oa_location") or {}
-        pdf_url = best.get("url_for_pdf") or best.get("url")
-        if pdf_url:
-            print(f"  [T1-Unpaywall] {pdf_url}")
-            return try_download_and_validate(pdf_url, dest, title, "Unpaywall")
+        for key in ["url_for_pdf", "url"]:
+            pdf_url = best.get(key)
+            if pdf_url:
+                print(f"  [T1-Unpaywall] {pdf_url}")
+                if try_download_and_validate(pdf_url, dest, title, "Unpaywall"):
+                    return True
     except Exception as e:
         print(f"  [T1-Unpaywall] ERR: {e}")
     return False
 
 def tier2_europepmc(pmcid, dest, title):
-    """Tier 2: EuropePMC PDF render."""
     if not pmcid:
         return False
+    # Attempting direct EuropePMC or CloudPMC PDF endpoint formats
     urls = [
         f"https://europepmc.org/articles/{pmcid}?pdf=render",
-        f"https://europepmc.org/backend/ptpmcrender.fcgi?accid={pmcid}&blobtype=pdf",
+        f"https://pmc.ncbi.nlm.nih.gov/articles/{pmcid}/pdf/",
+        f"https://www.ncbi.nlm.nih.gov/pmc/articles/{pmcid}/pdf/IJRI-28-258.pdf" if pmcid == "PMC6038217" else None
     ]
     for url in urls:
-        print(f"  [T2-EPMC] {url}")
-        if try_download_and_validate(url, dest, title, "EuropePMC"):
+        if not url:
+            continue
+        if try_download_and_validate(url, dest, title, f"T2-EPMC-{pmcid}", referer=f"https://www.ncbi.nlm.nih.gov/pmc/articles/{pmcid}/"):
             return True
+        time.sleep(0.3)
     return False
 
 def tier3_semanticscholar(doi, dest, title):
-    """Tier 3: Semantic Scholar openAccessPdf + PMC discovery."""
     if not doi:
         return False
-    ss_url = f"https://api.semanticscholar.org/graph/v1/paper/DOI:{doi}?fields=openAccessPdf,externalIds"
     try:
+        ss_url = f"https://api.semanticscholar.org/graph/v1/paper/DOI:{doi}?fields=openAccessPdf,externalIds"
         req = urllib.request.Request(ss_url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode())
-        # Try OA PDF
         oa = data.get("openAccessPdf") or {}
         oa_url = oa.get("url")
         if oa_url:
             print(f"  [T3-SS-OA] {oa_url}")
             if try_download_and_validate(oa_url, dest, title, "SS-OA"):
                 return True
-        # Try discovered PMC
         eids = data.get("externalIds") or {}
         pmcid = eids.get("PubMedCentral")
         if pmcid:
             pmc_str = f"PMC{pmcid}" if not str(pmcid).startswith("PMC") else str(pmcid)
-            return tier2_europepmc(pmc_str, dest, title)
+            if tier2_europepmc(pmc_str, dest, title):
+                return True
     except Exception as e:
         print(f"  [T3-SS] ERR: {e}")
     return False
 
 def tier4_crossref(doi, dest, title):
-    """Tier 4: CrossRef links."""
     if not doi:
         return False
-    cr_url = f"https://api.crossref.org/works/{doi}"
     try:
+        cr_url = f"https://api.crossref.org/works/{doi}"
         req = urllib.request.Request(cr_url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode())
@@ -248,81 +295,244 @@ def tier4_crossref(doi, dest, title):
             if link.get("content-type") == "application/pdf":
                 pdf_url = link.get("URL")
                 if pdf_url:
-                    print(f"  [T4-CrossRef] {pdf_url}")
-                    if try_download_and_validate(pdf_url, dest, title, "CrossRef"):
+                    if try_download_and_validate(pdf_url, dest, title, "T4-CrossRef"):
                         return True
     except Exception as e:
         print(f"  [T4-CrossRef] ERR: {e}")
     return False
 
 def tier5_direct_publisher(doi, dest, title):
-    """Tier 5: Direct publisher PDF URL patterns."""
     if not doi:
         return False
     patterns = []
-    if "10.4103/" in doi:
-        # Indian Journal style (e.g. IJRI) - OA journals
-        patterns.append(f"https://journals.lww.com/ijri/{doi.split('/')[-1]}")
-    if "10.1097/" in doi:
-        # LWW journals
-        patterns.append(f"https://journals.lww.com/{doi}")
     if "10.1007/" in doi:
-        # Springer
-        suffix = doi.replace("10.1007/", "")
         patterns.append(f"https://link.springer.com/content/pdf/{doi}.pdf")
-    if "10.30699/" in doi:
-        # FHI journal
-        patterns.append(f"https://fhi.uswr.ac.ir/article-1-1284-en.pdf")
+    if "10.4103/" in doi:
+        patterns.append(f"https://www.thieme-connect.de/products/ejournals/pdf/{doi}.pdf")
+    if "10.1097/" in doi:
+        patterns.append(f"https://journals.lww.com/{doi}")
     if "10.1093/" in doi:
-        # OUP journals
-        patterns.append(f"https://academic.oup.com/{doi.split('/')[1]}/article-pdf/doi/{doi}")
-
+        patterns.append(f"https://academic.oup.com/rpd/article-pdf/doi/{doi}")
     for url in patterns:
-        print(f"  [T5-Publisher] {url}")
-        if try_download_and_validate(url, dest, title, "Publisher"):
+        if try_download_and_validate(url, dest, title, "T5-Publisher"):
             return True
+        time.sleep(0.3)
     return False
 
 def tier6_ssrn(ssrn_id, dest, title):
-    """Tier 6: SSRN preprint download."""
     if not ssrn_id:
         return False
     urls = [
         f"https://papers.ssrn.com/sol3/Delivery.cfm/SSRN_ID{ssrn_id}_code.pdf?abstractid={ssrn_id}&mirid=1",
-        f"https://ssrn.com/abstract={ssrn_id}",
     ]
     for url in urls:
-        print(f"  [T6-SSRN] {url}")
-        if try_download_and_validate(url, dest, title, "SSRN"):
+        if try_download_and_validate(url, dest, title, "T6-SSRN"):
             return True
     return False
 
 def tier7_ncbi_pmid(pmid, dest, title):
-    """Tier 7: NCBI/PubMed PMC lookup by PMID."""
     if not pmid:
         return False
-    # Use NCBI eutils to find PMC
-    eutils_url = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id={pmid}&rettype=xml"
     try:
-        req = urllib.request.Request(eutils_url, headers={"User-Agent": "Mozilla/5.0"})
+        url = f"https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/?ids={pmid}&format=json&tool=medresearch&email=demo@example.com"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=15) as resp:
-            xml_text = resp.read().decode(errors='ignore')
-        # Try to extract PMC ID from the XML
-        import re
-        pmc_match = re.search(r'PMC\d+', xml_text)
-        if pmc_match:
-            pmcid = pmc_match.group()
-            print(f"  [T7-NCBI] Found PMCID: {pmcid}")
-            return tier2_europepmc(pmcid, dest, title)
+            data = json.loads(resp.read().decode())
+        for rec in data.get("records", []):
+            pmcid = rec.get("pmcid")
+            if pmcid and rec.get("status") != "error":
+                print(f"  [T7-NCBI] Discovered PMCID: {pmcid}")
+                if tier2_europepmc(pmcid, dest, title):
+                    return True
     except Exception as e:
         print(f"  [T7-NCBI] ERR: {e}")
+    return False
+
+def tier8_openalex(doi, dest, title):
+    if not doi:
+        return False
+    try:
+        url = f"https://api.openalex.org/works/doi:{doi}"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode())
+        locations = data.get("locations") or []
+        for loc in locations:
+            if loc.get("is_oa") and loc.get("pdf_url"):
+                pdf_url = loc["pdf_url"]
+                if try_download_and_validate(pdf_url, dest, title, "T8-OpenAlex"):
+                    return True
+                time.sleep(0.3)
+    except Exception as e:
+        print(f"  [T8-OpenAlex] ERR: {e}")
+    return False
+
+def tier9_core(doi, dest, title):
+    if not doi:
+        return False
+    try:
+        enc_doi = urllib.parse.quote(doi, safe="")
+        url = f"https://api.core.ac.uk/v3/search/works?q=doi:{enc_doi}&limit=3"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode())
+        for result in data.get("results", []):
+            dl_url = result.get("downloadUrl") or result.get("fullTextUrl")
+            src_urls = result.get("sourceFulltextUrls") or []
+            candidates = ([dl_url] if dl_url else []) + src_urls
+            for cu in candidates:
+                if cu and cu.startswith("http"):
+                    if try_download_and_validate(cu, dest, title, "T9-CORE"):
+                        return True
+                    time.sleep(0.3)
+    except Exception as e:
+        print(f"  [T9-CORE] ERR: {e}")
+    return False
+
+def tier10_researchgate_public(rg_id, dest, title):
+    if not rg_id:
+        return False
+    try:
+        probe_url = f"https://www.researchgate.net/publication/{rg_id}"
+        rg_headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.google.com/",
+        }
+        req = urllib.request.Request(probe_url, headers=rg_headers)
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            html = resp.read(100000).decode("utf-8", errors="ignore")
+
+        has_request_form = "Request full-text" in html or "request-full-text" in html
+        has_public_dl = (
+            "fulltext/downloads" in html
+            or "Download full-text PDF" in html
+            or '"pdfUrl"' in html
+            or "publication/" in html
+        )
+
+        if not has_public_dl:
+            print(f"  [T10-RG] No public PDF found for RG {rg_id}, skipping")
+            return False
+
+        # Extract direct PDF URLs
+        pdf_urls = re.findall(r'"pdfUrl"\s*:\s*"([^"]+)"', html)
+        pdf_urls += re.findall(r'href=["\']([^"\']*fulltext/downloads[^"\']*)["\']', html)
+        pdf_urls += re.findall(r'"(https?://[^"]+publication/[^"]+/links/[^"]+)"', html)
+
+        for pu in pdf_urls[:3]:
+            full_url = pu if pu.startswith("http") else "https://www.researchgate.net" + pu
+            # Note: RG usually returns 403 on urllib but we try anyway
+            if try_download_and_validate(full_url, dest, title, "T10-RG", extra_headers=rg_headers):
+                return True
+            time.sleep(0.5)
+    except Exception as e:
+        print(f"  [T10-RG] ERR: {e}")
+    return False
+
+def tier11_medknow_oa(doi, dest, title, row_info):
+    publisher = row_info.get("publisher")
+    if publisher != "medknow":
+        return False
+    pmid = row_info.get("pmid")
+    candidates = [
+        "https://www.ijri.org/text.asp?2018/28/3/347/241461",
+    ]
+    if pmid:
+        candidates += [
+            f"https://journals.lww.com/_layouts/15/oaks.journals/downloadpdf.aspx?an={pmid}",
+        ]
+    candidates += [
+        "https://www.ijri.org/downloadpdf.asp?issn=0971-3026;year=2018;volume=28;issue=3;spage=347;epage=355;aulast=Jafari",
+        "https://article.medknow.com/downloadpdf.asp?issn=0971-3026;year=2018;volume=28;issue=3;spage=347;epage=355;aulast=Jafari",
+    ]
+    for url in candidates:
+        if try_download_and_validate(url, dest, title, "T11-Medknow", {"Referer": "https://www.ijri.org/"}):
+            return True
+        time.sleep(0.5)
+    return False
+
+def tier12_doi_landing_scrape(doi, dest, title):
+    if not doi:
+        return False
+    try:
+        doi_url = f"https://doi.org/{doi}"
+        req = urllib.request.Request(doi_url, headers=HEADERS)
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            html = resp.read(200000).decode("utf-8", errors="ignore")
+            final_url = resp.geturl()
+        print(f"  [T12-Scrape] Landed: {final_url}")
+        base = "/".join(final_url.split("/")[:3])
+
+        candidates = []
+        candidates += re.findall(r'href=["\']([^"\']*\.pdf[^"\']*)["\']', html, re.IGNORECASE)
+        candidates += re.findall(r'"pdf[Uu]rl"\s*:\s*"([^"]+)"', html)
+        candidates += re.findall(r'"downloadUrl"\s*:\s*"([^"]+)"', html)
+        candidates += re.findall(r'(https?://[^\s"\'<>]+\.pdf)', html)
+
+        seen = set()
+        for c in candidates[:10]:
+            full = c if c.startswith("http") else base + "/" + c.lstrip("/")
+            if full in seen:
+                continue
+            seen.add(full)
+            if try_download_and_validate(full, dest, title, "T12-Scrape"):
+                return True
+            time.sleep(0.3)
+    except Exception as e:
+        print(f"  [T12-Scrape] ERR: {e}")
+    return False
+
+def tier13_duckduckgo_search(title, dest):
+    """
+    Tier 13: Search DuckDuckGo HTML for public PDF download links.
+    Crawls search results to discover alternative unpaywalled hosting.
+    """
+    print(f"  [T13-DDG-Search] Searching DuckDuckGo...")
+    query = f'"{title}" pdf'
+    url = "https://html.duckduckgo.com/html/?q=" + urllib.parse.quote(query)
+    
+    try:
+        req = urllib.request.Request(url, headers=HEADERS)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            html = resp.read().decode('utf-8', errors='ignore')
+        
+        encoded_links = re.findall(r'uddg=([^&"\'<>]+)', html)
+        pdf_urls = []
+        for el in encoded_links:
+            dec = urllib.parse.unquote(el)
+            if dec.startswith("http"):
+                if ".pdf" in dec.lower() or "pdf" in dec.lower():
+                    pdf_urls.append(dec)
+        
+        href_links = re.findall(r'href=["\'](https?://[^"\']+)["\']', html)
+        for hl in href_links:
+            if "duckduckgo.com" not in hl:
+                if ".pdf" in hl.lower() or "pdf" in hl.lower():
+                    pdf_urls.append(hl)
+                    
+        seen = set()
+        dedup = []
+        for u in pdf_urls:
+            if u not in seen:
+                seen.add(u)
+                dedup.append(u)
+                
+        print(f"  [T13-DDG-Search] Discovered {len(dedup)} candidate search result links.")
+        for u in dedup[:5]:
+            if try_download_and_validate(u, dest, title, "T13-DDG-Search"):
+                return True
+            time.sleep(0.5)
+    except Exception as e:
+        print(f"  [T13-DDG-Search] ERR: {e}")
     return False
 
 # ─── Main Audit Loop ─────────────────────────────────────────────────────
 
 def main():
     print("=" * 70)
-    print("  FULL AUDIT & DOWNLOAD v3.0 (Content-Aware Anti-Honeypot)")
+    print("  FULL AUDIT & DOWNLOAD v4.0  (13-Tier Ladder + CloudPMC POW Solver)")
     print("=" * 70)
 
     audit_results = {}
@@ -331,96 +541,88 @@ def main():
         row = row_info["row"]
         title = row_info["title"]
         fname = row_info["fname"]
-        doi = row_info["doi"]
+        doi = row_info.get("doi")
         pmid = row_info.get("pmid")
         pmcid = row_info.get("pmcid")
         ssrn = row_info.get("ssrn")
+        rg_id = row_info.get("rg_id")
 
         print(f"\n{'─' * 70}")
-        print(f"[ROW {row}] {title[:80]}")
+        print(f"[ROW {row}] {title[:75]}")
         print(f"{'─' * 70}")
 
-        # Row 08: Clinical standard, no PDF expected
         if fname is None:
-            print(f"  [SKIP] No PDF expected (Clinical Standard)")
-            audit_results[row] = {"status": "N/A", "reason": "Clinical Standard"}
+            print(f"  [SKIP] Clinical Standard")
+            audit_results[row] = {"status": "N/A"}
             continue
 
         dest = os.path.join(PAPERS_DIR, fname)
 
-        # ─── Phase 1: Validate existing PDF ──────────────────────────
+        # Phase 1: Validate existing
         if os.path.exists(dest):
-            print(f"  [EXISTS] {fname} ({os.path.getsize(dest):,} bytes)")
-            if not is_valid_pdf(dest):
-                print(f"  [FAIL] Magic bytes invalid -> DELETING")
-                safe_remove(dest)
-            else:
-                ok, msg = content_aware_validate(dest, title)
+            print(f"  [EXISTS] {os.path.getsize(dest):,} bytes")
+            if is_valid_pdf(dest):
+                ok, msg = content_check(dest, title)
                 if ok:
-                    print(f"  [VALID] Content check PASSED: {msg}")
-                    audit_results[row] = {"status": "VALID", "fname": fname, "source": "existing"}
+                    print(f"  [VALID] {msg}")
+                    audit_results[row] = {"status": "VALID", "fname": fname}
                     continue
                 else:
-                    print(f"  [HONEYPOT] Content check FAILED: {msg} -> DELETING")
+                    print(f"  [HONEYPOT] {msg} -> DELETING")
                     safe_remove(dest)
+            else:
+                print(f"  [INVALID] Bad magic bytes -> DELETING")
+                safe_remove(dest)
 
-        # ─── Phase 2: Multi-Tier Download ────────────────────────────
-        print(f"  [DOWNLOADING] Attempting multi-tier download...")
+        # Phase 2: 13-Tier Download
+        print(f"  [DOWNLOAD] Starting 13-tier ladder...")
         downloaded = False
 
-        # Tier 1: Unpaywall
+        tiers = [
+            ("T1", lambda: tier1_unpaywall(doi, dest, title)),
+            ("T2", lambda: tier2_europepmc(pmcid, dest, title)),
+            ("T3", lambda: tier3_semanticscholar(doi, dest, title)),
+            ("T4", lambda: tier4_crossref(doi, dest, title)),
+            ("T5", lambda: tier5_direct_publisher(doi, dest, title)),
+            ("T6", lambda: tier6_ssrn(ssrn, dest, title)),
+            ("T7", lambda: tier7_ncbi_pmid(pmid, dest, title)),
+            ("T8", lambda: tier8_openalex(doi, dest, title)),
+            ("T9", lambda: tier9_core(doi, dest, title)),
+            ("T10", lambda: tier10_researchgate_public(rg_id, dest, title)),
+            ("T11", lambda: tier11_medknow_oa(doi, dest, title, row_info)),
+            ("T12", lambda: tier12_doi_landing_scrape(doi, dest, title)),
+            ("T13", lambda: tier13_duckduckgo_search(title, dest)),
+        ]
+
+        for tier_name, tier_fn in tiers:
+            try:
+                if tier_fn():
+                    downloaded = True
+                    audit_results[row] = {"status": "DOWNLOADED", "fname": fname, "tier": tier_name}
+                    break
+            except Exception as e:
+                print(f"  [{tier_name}] Unhandled ERR: {e}")
+            time.sleep(0.2)
+
         if not downloaded:
-            downloaded = tier1_unpaywall(doi, dest, title)
+            print(f"  [FAILED] All 13 tiers exhausted")
+            audit_results[row] = {"status": "FAILED"}
 
-        # Tier 2: EuropePMC (if PMCID known)
-        if not downloaded and pmcid:
-            downloaded = tier2_europepmc(pmcid, dest, title)
-
-        # Tier 3: Semantic Scholar (discover OA + PMC)
-        if not downloaded:
-            time.sleep(0.5)  # rate limit courtesy
-            downloaded = tier3_semanticscholar(doi, dest, title)
-
-        # Tier 4: CrossRef
-        if not downloaded:
-            time.sleep(0.5)
-            downloaded = tier4_crossref(doi, dest, title)
-
-        # Tier 5: Direct publisher URL patterns
-        if not downloaded:
-            downloaded = tier5_direct_publisher(doi, dest, title)
-
-        # Tier 6: SSRN (preprint)
-        if not downloaded and ssrn:
-            downloaded = tier6_ssrn(ssrn, dest, title)
-
-        # Tier 7: NCBI PMID -> PMC discovery
-        if not downloaded and pmid:
-            downloaded = tier7_ncbi_pmid(pmid, dest, title)
-
-        if downloaded:
-            audit_results[row] = {"status": "DOWNLOADED", "fname": fname, "source": "multi-tier"}
-        else:
-            audit_results[row] = {"status": "FAILED", "fname": None, "source": None}
-            print(f"  [FAILED] All tiers exhausted for Row {row}")
-
-    # ─── Phase 3: Summary Report ─────────────────────────────────────
+    # Summary
     print(f"\n{'=' * 70}")
-    print("  AUDIT SUMMARY")
+    print("  AUDIT SUMMARY v4.0")
     print(f"{'=' * 70}")
-    for row, res in audit_results.items():
-        status = res['status']
-        icon = {"VALID": "OK", "DOWNLOADED": "NEW", "FAILED": "XX", "N/A": "--"}.get(status, "??")
-        fname = res.get('fname', 'N/A') or 'N/A'
-        source = res.get('source', '') or ''
-        safe_fname = fname.encode('ascii', errors='replace').decode('ascii')
-        print(f"  [{icon}] Row {row}: {status:12s} | {source:12s} | {safe_fname}")
+    icons = {"VALID": "OK", "DOWNLOADED": "NEW", "FAILED": "XX", "N/A": "--"}
+    for row, res in sorted(audit_results.items()):
+        icon = icons.get(res["status"], "??")
+        fname = res.get("fname", "N/A") or "N/A"
+        tier = res.get("tier", "")
+        safe_f = fname.encode("ascii", errors="replace").decode("ascii")
+        print(f"  [{icon}] Row {row}: {res['status']:10s} {tier:4s} | {safe_f}")
 
-    # Save results
-    results_path = os.path.join(PAPERS_DIR, "audit_results.json")
-    with open(results_path, "w", encoding="utf-8") as f:
+    with open(os.path.join(PAPERS_DIR, "audit_v4_results.json"), "w", encoding="utf-8") as f:
         json.dump(audit_results, f, ensure_ascii=False, indent=2)
-    print(f"\nSaved: {results_path}")
+    print(f"\nDone.")
 
 if __name__ == "__main__":
     main()
