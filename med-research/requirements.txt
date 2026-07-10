@@ -1,5 +1,0 @@
-requests
-scholarly
-playwright
-python-dotenv
-beautifulsoup4
